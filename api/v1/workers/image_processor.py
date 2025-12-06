@@ -49,11 +49,22 @@ class ImageProcessor:
         return resized_image
     
     @staticmethod
-    def compress_image(image: Image.Image, quality: int = 85) -> Image.Image:
-        """Compress image by reducing quality"""
-        # For JPEG/WebP, we can reduce quality
-        # For PNG, we can optimize
-        return image  # In practice, implement compression logic
+    def compress_image(image: Image.Image, format: str = "JPEG", quality: int = 85) -> Image.Image:
+        """Compress image by saving to buffer with lower quality"""
+        buffer = io.BytesIO()
+        format = format.upper()
+        
+        if format in ["JPEG", "WEBP"]:
+            image.save(buffer, format=format, quality=quality, optimize=True)
+        elif format == "PNG":
+            image.save(buffer, format="PNG", optimize=True)
+        else:
+            image.save(buffer, format=format)
+        
+        buffer.seek(0)
+        compressed_image = Image.open(buffer)
+        logger.info(f"Compressed image to format {format} with quality {quality}")
+        return compressed_image
     
     @staticmethod
     def create_thumbnail(image: Image.Image, size: Tuple[int, int]) -> Image.Image:

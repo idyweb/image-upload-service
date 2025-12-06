@@ -4,8 +4,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from api.v1.models import ImageUpload, UploadStatus, ProcessingLog
-from schemas.upload import UploadCreate, UploadUpdate
+from api.v1.models.upload import ImageUpload, UploadStatus, ProcessingLog
+from api.v1.schemas.upload import UploadCreate, UploadUpdate
 from api.utils.logger import logger
 
 

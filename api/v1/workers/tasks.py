@@ -6,7 +6,7 @@ from api.db.database import get_db
 from api.v1.services.upload_service import UploadService
 from api.v1.services.storage_service import storage_service
 from api.v1.workers.image_processor import ImageProcessor
-from api.v1.models import UploadStatus
+from api.v1.models.upload import UploadStatus
 from api.utils.logger import logger
 
 

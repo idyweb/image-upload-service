@@ -4,7 +4,7 @@ from sqlalchemy import String, Text, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.base_model import Base, BaseModel
+from api.db.base_model import Base, BaseModel
 
 
 class UploadStatus:
