@@ -3,10 +3,11 @@ from sqlalchemy.orm import Session
 
 from api.utils.config import settings
 from api.db.database import SessionLocal
+from api.utils.logger import logger
 
 # Create Celery app
 celery_app = Celery(
-    "upload_worker",
+    "workers",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
     include=["api.v1.workers.tasks"]
@@ -29,15 +30,22 @@ celery_app.conf.update(
 )
 
 
-def get_db() -> Session:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# def get_db() -> Session:
+#     db = SessionLocal()
+#     try:
+#         yield db
+#     finally:
+#         db.close()
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def process_image_task(self, upload_id: str):
     from api.v1.workers.tasks import process_image
-    return process_image(upload_id)
+    try:
+        logger.info(f"Celery received task process_image_task for upload_id={upload_id}")
+        result = process_image(upload_id)
+        logger.info(f"Celery completed task process_image_task for upload_id={upload_id}")
+        return result
+    except Exception as exc:
+        logger.exception(f"Exception in Celery task process_image_task for upload_id={upload_id}: {exc}")
+        raise

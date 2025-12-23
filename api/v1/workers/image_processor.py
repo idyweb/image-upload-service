@@ -55,6 +55,12 @@ class ImageProcessor:
         format = format.upper()
         
         if format in ["JPEG", "WEBP"]:
+            # Handle RGBA to RGB conversion for JPEGs
+            if format == "JPEG" and image.mode in ("RGBA", "LA"):
+                background = Image.new("RGB", image.size, (255, 255, 255))
+                background.paste(image, mask=image.split()[-1]) # use alpha channel as mask
+                image = background
+            
             image.save(buffer, format=format, quality=quality, optimize=True)
         elif format == "PNG":
             image.save(buffer, format="PNG", optimize=True)

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -50,9 +50,9 @@ class UploadService:
         upload.error_message = error_message
         
         if status == UploadStatus.PROCESSING and not upload.processing_started_at:
-            upload.processing_started_at = datetime.utcnow()
+            upload.processing_started_at = datetime.now(timezone.utc)
         elif status == UploadStatus.COMPLETED and not upload.processing_completed_at:
-            upload.processing_completed_at = datetime.utcnow()
+            upload.processing_completed_at = datetime.now(timezone.utc)
         
         upload.update(self.db)
         logger.info(f"Updated upload {upload_id} status to {status}")
@@ -107,7 +107,7 @@ class UploadService:
     
     def cleanup_failed_uploads(self, hours_old: int = 24) -> int:
         """Clean up failed uploads older than specified hours"""
-        cutoff_time = datetime.utcnow() - timedelta(hours=hours_old)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours_old)
         
         # Find failed uploads
         failed_uploads = self.db.query(ImageUpload).filter(

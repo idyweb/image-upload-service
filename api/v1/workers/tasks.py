@@ -41,44 +41,100 @@ def process_image(upload_id: str) -> dict:
             upload_service.update_upload_status(upload_id, UploadStatus.PROCESSING)
             upload_service.add_processing_log(upload_id, "start", "started", "Image processing started")
             
-            # Download original image from storage
             logger.info(f"Starting processing for upload: {upload_id}")
+            
+            # ========= ACTUAL PROCESSING STARTS HERE =========
+            
+            # 1. Download original from GCS
             upload_service.add_processing_log(upload_id, "download", "started", "Downloading original image")
             
-            # Note: In production, you'd download from GCS here
-            # For now, we'll simulate processing
+            # Extract filename from URL
+            original_url = upload.original_url
+            # Get the blob path from GCS URL
+            # URL format: https://storage.googleapis.com/bucket-name/path/to/file.jpg
+            bucket_name = storage_service.bucket_name
+            blob_path = original_url.replace(f"https://storage.googleapis.com/{bucket_name}/", "")
             
-            # Simulate processing steps
-            steps = [
-                ("resize", "Resizing image"),
-                ("compress", "Compressing image"),
-                ("thumbnail", "Creating thumbnail"),
-                ("upload", "Uploading processed images")
-            ]
+            # Download the file
+            blob = storage_service.bucket.blob(blob_path)
+            image_bytes = blob.download_as_bytes()
             
-            for step, message in steps:
-                step_start = time.time()
-                upload_service.add_processing_log(upload_id, step, "started", message)
-                
-                # Simulate processing time
-                time.sleep(1)
-                
-                step_duration = int((time.time() - step_start) * 1000)
-                upload_service.add_processing_log(
-                    upload_id, step, "completed", 
-                    f"{message} completed", step_duration
-                )
+            upload_service.add_processing_log(upload_id, "download", "completed", "Original image downloaded")
             
-            # Update with processed URLs (simulated)
-            # In production, you'd upload to GCS and get real URLs
-            upload_service.update_processed_urls(
+            # 2. Process the image
+            upload_service.add_processing_log(upload_id, "process", "started", "Processing image")
+            
+            # Open image
+            from PIL import Image
+            import io
+            
+            image = Image.open(io.BytesIO(image_bytes))
+            original_filename = upload.original_filename
+            
+            # Resize
+            upload_service.add_processing_log(upload_id, "resize", "started", "Resizing image")
+            from api.v1.workers.image_processor import ImageProcessor
+            processor = ImageProcessor()
+            
+            resized_image = processor.resize_image(image, (1200, 1200))
+            upload_service.add_processing_log(upload_id, "resize", "completed", "Image resized")
+            
+            # Create thumbnail
+            upload_service.add_processing_log(upload_id, "thumbnail", "started", "Creating thumbnail")
+            thumbnail_image = processor.create_thumbnail(image, (150, 150))
+            upload_service.add_processing_log(upload_id, "thumbnail", "completed", "Thumbnail created")
+            
+            # Compress (use resized image as compressed version)
+            upload_service.add_processing_log(upload_id, "compress", "started", "Compressing image")
+            compressed_image = processor.compress_image(resized_image, quality=85)
+            upload_service.add_processing_log(upload_id, "compress", "completed", "Image compressed")
+            
+            # 3. Upload processed images to GCS
+            upload_service.add_processing_log(upload_id, "upload", "started", "Uploading processed images")
+            
+            # Upload thumbnail
+            thumbnail_url = storage_service.upload_image(
+                thumbnail_image,
                 upload_id,
-                thumbnail_url=f"https://storage.googleapis.com/{storage_service.bucket_name}/thumbnails/{upload_id}.jpg",
-                resized_url=f"https://storage.googleapis.com/{storage_service.bucket_name}/resized/{upload_id}.jpg",
-                compressed_url=f"https://storage.googleapis.com/{storage_service.bucket_name}/compressed/{upload_id}.jpg"
+                original_filename,
+                suffix="thumbnail",
+                format="JPEG",
+                quality=85
             )
             
-            # Update status to completed
+            # Upload resized version
+            resized_url = storage_service.upload_image(
+                resized_image,
+                upload_id,
+                original_filename,
+                suffix="resized",
+                format="JPEG",
+                quality=85
+            )
+            
+            # Upload compressed version
+            compressed_url = storage_service.upload_image(
+                compressed_image,
+                upload_id,
+                original_filename,
+                suffix="compressed",
+                format="JPEG",
+                quality=85
+            )
+            
+            upload_service.add_processing_log(upload_id, "upload", "completed", "All images uploaded")
+            
+            # ========= ACTUAL PROCESSING ENDS HERE =========
+            
+            # 4. Save REAL URLs to database
+            upload_service.update_processed_urls(
+                upload_id,
+                thumbnail_url=thumbnail_url,
+                resized_url=resized_url,
+                compressed_url=compressed_url
+            )
+            
+            # 5. Update status to completed
             upload_service.update_upload_status(upload_id, UploadStatus.COMPLETED)
             
             total_duration = int((time.time() - start_time) * 1000)

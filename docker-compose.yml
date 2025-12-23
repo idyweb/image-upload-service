@@ -8,11 +8,13 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - GOOGLE_STORAGE_BUCKET=uploads-dev
       - ENVIRONMENT=development
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
     depends_on:
       - db
       - redis
     volumes:
       - .:/app
+      - ./service-account.json:/app/service-account.json:ro
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   worker:
@@ -22,11 +24,13 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - GOOGLE_STORAGE_BUCKET=uploads-dev
       - ENVIRONMENT=development
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
     depends_on:
       - db
       - redis
     volumes:
       - .:/app
+      - ./service-account.json:/app/service-account.json:ro
     command: celery -A api.v1.workers.celery_app worker --loglevel=info
 
   db:
@@ -41,7 +45,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "6380:6379"
 
 volumes:
   postgres_data:

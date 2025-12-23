@@ -12,8 +12,30 @@ from api.utils.logger import logger
 class StorageService:
     def __init__(self):
         self.bucket_name = settings.GOOGLE_STORAGE_BUCKET
-        self.client = storage.Client()
-        self.bucket = self.client.bucket(self.bucket_name)
+        self._client = None
+        self._bucket = None
+        self._init_failed = False
+
+    @property
+    def client(self):
+        """Lazily initialize Google Cloud Storage client."""
+        if self._client is None and not self._init_failed:
+            try:
+                self._client = storage.Client()
+                logger.info("Google Cloud Storage client initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Google Cloud Storage client: {e}. "
+                              f"Storage operations will fail unless credentials are configured.")
+                self._init_failed = True
+                self._client = None
+        return self._client
+
+    @property
+    def bucket(self):
+        """Lazily get bucket reference."""
+        if self._bucket is None and self.client is not None:
+            self._bucket = self.client.bucket(self.bucket_name)
+        return self._bucket
 
     def generate_file_path(self, upload_id: str, filename: str, suffix: str = "") -> str:
         """Generate file path in GCS."""
@@ -25,7 +47,7 @@ class StorageService:
 
         return f"uploads/{date_str}/{upload_id}/{filename}"
 
-    async def upload_file(
+    def upload_file(
         self,
         file_content: bytes,
         upload_id: str,
@@ -35,6 +57,9 @@ class StorageService:
     ) -> str:
         """Upload raw bytes to Google Cloud Storage."""
         try:
+            if not self.client or not self.bucket:
+                raise RuntimeError("Google Cloud Storage not configured. Please set up credentials.")
+            
             file_path = self.generate_file_path(upload_id, original_filename, suffix)
             blob = self.bucket.blob(file_path)
 
@@ -52,7 +77,7 @@ class StorageService:
             logger.error(f"Failed to upload file to GCS: {str(e)}")
             raise
 
-    async def upload_image(
+    def upload_image(
         self,
         image: Image.Image,
         upload_id: str,
@@ -64,6 +89,13 @@ class StorageService:
         """Upload a PIL Image to Google Cloud Storage."""
         try:
             img_io = io.BytesIO()
+            
+            # Handle RGBA to RGB conversion for JPEGs
+            if format.upper() == "JPEG" and image.mode in ("RGBA", "LA"):
+                background = Image.new("RGB", image.size, (255, 255, 255))
+                background.paste(image, mask=image.split()[-1]) # use alpha channel as mask
+                image = background
+
             image.save(img_io, format=format, quality=quality)
             img_io.seek(0)
 
@@ -71,7 +103,7 @@ class StorageService:
             if format.upper() == "JPEG":
                 content_type = "image/jpeg"
 
-            return await self.upload_file(
+            return self.upload_file(
                 img_io.getvalue(),
                 upload_id,
                 original_filename,
@@ -83,9 +115,13 @@ class StorageService:
             logger.error(f"Failed to upload image to GCS: {str(e)}")
             raise
 
-    async def delete_file(self, file_url: str) -> bool:
+    def delete_file(self, file_url: str) -> bool:
         """Delete a file from Google Cloud Storage."""
         try:
+            if not self.client or not self.bucket:
+                logger.warning("Cannot delete file: Google Cloud Storage not configured")
+                return False
+            
             prefix = f"https://storage.googleapis.com/{self.bucket_name}/"
             blob_path = file_url.replace(prefix, "")
 

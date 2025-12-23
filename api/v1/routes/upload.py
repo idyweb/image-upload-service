@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 import uuid
 from api.db.database import get_db
@@ -17,7 +18,6 @@ router = APIRouter()
 @router.post("/upload", response_model=UploadResponse)
 async def upload_image(
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db)
 ):
     """Upload an image for processing"""
@@ -43,7 +43,8 @@ async def upload_image(
         
         # Upload original file to storage
         upload_id = str(uuid.uuid4())
-        original_url = await storage_service.upload_file(
+        original_url = await run_in_threadpool(
+            storage_service.upload_file,
             contents, upload_id, file.filename
         )
         
@@ -169,7 +170,7 @@ async def delete_upload(
         
         for url in urls_to_delete:
             if url:
-                await storage_service.delete_file(url)
+                await run_in_threadpool(storage_service.delete_file, url)
         
         # Delete from database
         upload.delete(db)
